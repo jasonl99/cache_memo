@@ -1,8 +1,12 @@
 module CacheMemo
 
-  class CacheData < Hash
+  class CacheData < SimpleDelegator
 
     class ArgumentError < StandardError
+    end
+
+    def initialize
+      super {}
     end
 
     def set(name:, value:, expires: )

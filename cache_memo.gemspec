@@ -6,6 +6,7 @@ Gem::Specification.new do |s|
   s.description = "Rather than memoizing once and forever holding that value, this allows your memoized value to expire periodically"
   s.authors     = ["Jason Landry"]
   s.email       = "jasonl99@fastmail.com"
+  s.required_ruby_version = '>= 2.0'
   s.files       = ["lib/cache_memo.rb"]
   s.license       = 'MIT'
 end
