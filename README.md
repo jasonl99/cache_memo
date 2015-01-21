@@ -45,7 +45,7 @@ my_object.really_expensive_calculation  # 1050231058231
 
 ```
 
-expensive_method will return 1 for the next ten seconds, after which it will be recalculated.  The same holds true for really_expensive_method; it will return 8599 but for 10 minutes.
+expensive_method will return 100 for the next ten seconds, after which it will be recalculated.  The same holds true for really_expensive_method; it will return 1050231058231 but for 10 minutes.
 
 You can view the current cache data as well:
 
@@ -54,11 +54,11 @@ my_object.cache_data
 
 {
 :expensive_calculation=>{
-    :value=>23, 
+    :value=>100, 
     :expires=>Wed, 21 Jan 2015 12:45:01 -0500
     }, 
  :really_expensive_calculation=>{
-    :value=>8599, 
+    :value=>1050231058231, 
     :expires=>Wed, 21 Jan 2015 12:55:05 -0500
     }
 }
