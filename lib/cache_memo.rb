@@ -1,6 +1,5 @@
 module CacheMemo
 
-
   class CacheData < Hash
 
     class ArgumentError < StandardError
