@@ -17,11 +17,15 @@ class MyClass
   include CacheMemo
   
   def expensive_method
-    cache_for(10.seconds) {perform_expensive_calculation}
+    cache_for(10.seconds) do
+      calculate_my_savings
+    end
   end
 
   def really_expensive_method
-    cache_for(10.minutes) {perform_expensive_calculation}
+    cache_for(10.minutes) do
+      calculate_world_gdp
+    end
   end
 
 end
@@ -36,12 +40,12 @@ Suppose we do the following:
 
 ```ruby
 my_object = MyClass.new
-my_object.expensive_calculation         # 23
-my_object.really_expensive_calculation  # 8599
+my_object.expensive_calculation         # 100
+my_object.really_expensive_calculation  # 1050231058231
 
 ```
 
-expensive_method will return 23 for the next ten seconds, after which it will be recalculated.  The same holds true for really_expensive_method; it will return 8599 for 10 minutes.
+expensive_method will return 1 for the next ten seconds, after which it will be recalculated.  The same holds true for really_expensive_method; it will return 8599 but for 10 minutes.
 
 You can view the current cache data as well:
 
