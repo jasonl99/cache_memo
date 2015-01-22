@@ -18,7 +18,7 @@ cache_memo gem makes it easier:
 ```ruby
 class MyClass
   include CacheMemo
- 
+
   def user_posts(user)
     # this will create a digest for a cache key
     cache_for(10.minutes, user) do
@@ -26,8 +26,7 @@ class MyClass
     end
 
   def daily_sales(date)
-  cache_duration = date < Date.today ? 1.day : 5.minutes  #no need to
-recalulate other day's sales
+  cache_duration = date < Date.today ? 1.day : 5.minutes #no need to recalulate other day's sales
   cache_for(5.minutes, date) do
       get_daily_sales_from_server
     end
