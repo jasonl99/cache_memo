@@ -21,14 +21,23 @@ module CacheMemo
       self[name][args_signature][:value]
     end
 
-    # The args are converted to a string, from which an SHA1 hash is calculated.
-    # Each set of args will produce a different signature.  it is possible that
-    # two different sets of arguments will produce the same hash, but this is  so
-    # unlikely that it's not to be with it.  The way to fix this would be to calculate
-    # an extra signature that gets append to the first with the args + salt like this:
-    # Digest::SHA1.hexdigest args.to_s + "this is a salt"
+    # args are passed in from the instance's #cache_for, which we define below.
+    # This is simply an array of arguments that are not processed; they are used
+    # by cache_for block and we have no knowledge of what they mean.  However,
+    # they are useful because we can create a signature from them.  Before generating
+    # the signature, create a string from the array.  If the string is less than
+    # 100 characters (a *completely* arbitrary number), we simply use the array as the
+    # hash key, otherwise we generate a SHA1 digest of the string.  This serves two
+    # useful purposes:  1) for cases with simple variable (ints, strings, etc) we
+    # don't have to go through the process of creating a SHA1 hash.  Second,
+    # we can much more easily inspect the cache data for debugging purposes, etc.
     def signature(args)
-      Digest::SHA1.hexdigest args.to_s
+      str = args.to_s
+      if str.length <=100
+        args
+      else
+        Digest::SHA1.hexdigest args.to_s
+      end
     end
 
     # The memoized value is considered expired if either it doesn't exist or the expiration
