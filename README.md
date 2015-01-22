@@ -15,51 +15,56 @@ This is fine most of the time.  However, you occassionaly want to refresh the me
 ```ruby
 class MyClass
   include CacheMemo
-  
-  def expensive_method
-    cache_for(10.seconds) do
-      calculate_my_savings
+
+  def daily_sales
+    cache_for(5.minutes) do
+      get_daily_sales_from_server
     end
   end
 
-  def really_expensive_method
-    cache_for(10.minutes) do
-      calculate_world_gdp
+  def gross_domestic_product(country)
+    cache_for(1.day) do
+      calculate_gdp(country)
     end
   end
 
 end
-    
+
 ```
 
-Now, when expensive_method is called, it will return the memoized value unless the specified duration has passed, at which time it will rerun the expensive calculation.
-
-The gem caches this data internally in a subclassed hash.
-
-Suppose we do the following:
 
 ```ruby
 my_object = MyClass.new
-my_object.expensive_calculation         # 100
-my_object.really_expensive_calculation  # 1050231058231
+my_object.daily_sales         # 15000.00
+my_object.calculate_gdp('United States')  # 16700000000000
+my_object.calculate_gdp('Germany')        #  3700000000000
 
 ```
+Daily sales will be recalculated every ten minutes.
 
-expensive_method will return 100 for the next ten seconds, after which it will be recalculated.  The same holds true for really_expensive_method; it will return 1050231058231 but for 10 minutes.
-
-You can view the current cache data as well:
+With gross_domestic_product, not only will each country have its own
+cached value.  Looking at the cache_data, you can see the parameter
+signatures, and the two for United States and Germany.
 
 ```ruby
 my_object.cache_data
 
 {
-:expensive_calculation=>{
-    :value=>100, 
-    :expires=>Wed, 21 Jan 2015 12:45:01 -0500
-    }, 
- :really_expensive_calculation=>{
-    :value=>1050231058231, 
-    :expires=>Wed, 21 Jan 2015 12:55:05 -0500
+:daily_sales=>{
+    "97d170e1550eee4afc0af065b78cda302a97674c" => {
+      :value=>15000,
+      :expires=>Wed, 21 Jan 2015 12:45:01 -0500
+      },
     }
+ :gross_domestic_product=>
+    "768685ca582abd0af2fbb57ca37752aa98c9372b" => {
+      :value=>16700000000000
+      :expires=>Wed, 21 Jan 2015 12:55:05 -0500
+      }
+    "17d53e0e6a68acdf80b78d4f9d868c8736db2cec"=> {
+      :value=>3700000000000
+      :expires=>Wed, 21 Jan 2015 12:56:15 -0500
+      }
+
 }
 ```
