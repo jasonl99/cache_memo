@@ -1,6 +1,6 @@
 module CacheMemo
 
-  class CacheData < SimpleDelegator
+  class CacheData
 
     FUTURE = '3000-Jan-15'.to_datetime
     RESERVED_KEYS = [:next_gc, :reads, :writes]
@@ -9,35 +9,66 @@ module CacheMemo
     class ArgumentError < StandardError
     end
 
-    def initialize(init={})
-      raise ArgumentError, "The initial value must be a hash." unless init.is_a? Hash
-      super init
-      self[:__global_gc__] = DateTime.now + 1000.years
+    def initialize
+      @cache_data = Hash.new {|h,k| h[k] = RESERVED_KEYS.include?(k)? nil : Hash.new(&h.default_proc)}
+      @method_expirations = {}  # keeps track of when the next cached object expires for this method
     end
 
+    def cache_data
+      @cache_data
+    end
 
-    # Cleans out expired data for a particular method. 
-    # Each method has a :next_gc key, which represents the next time
-    # a cached value will expire for this method across all parameter signatures.  for example:
-    # {
-    #   some_method: {
-    #     next_gc: 22 Jan 15 3:45PM
-    #     [100,'Bob']: {expires:..., value:...},
-    #     [100,'Jim']: {expires:..., value:...}
-    #
-    # This means that one of Bob or Jim (or both) expire at 3:45pm.  Basically, at 3:45pm, this
-    # method needs to be garbage collected.  This next_gc is used the master :__global_gc__
-    # Each time #set is called, it clears cached parameter signature for any that are expired.
-    # Regardless, it updates the next time garbage collection would be required for this method
-    # so it can *still* be cleared out with a global clearing method.
-    def garbage_collect(method:)
-      oldest = self[method][:next_gc]
-      self[method].except(*RESERVED_KEYS).each do |key, value|
-        oldest = [value[:expires],oldest].min if value[:expires] > DateTime.now # save now, because it'll get deleted
-        self[method].delete(key) if value[:expires] <= DateTime.now
-        self[method][:next_gc] = cache_empty?(method) ? oldest : FUTURE
+    def method_expirations
+      @method_expirations
+    end
+
+    def signatures(method)
+      method_cache(method).keys
+    end
+
+    def method_cache(method)
+      cache_data(method).except(*RESERVED_KEYS)
+    end
+
+    def remove_method_signature(method,signature)
+      cache_data[method].delete signature
+    end
+
+    # def next_expiration(method, expiration=:_get_)
+    #   if expiration == :_get_
+    #     @method_expirations[method]
+    #   else
+    #     @method_expirations[method] = cache_empty?(method) ? expiration : FUTURE
+    #   end
+    # end
+
+    def signature_expiration(method, signature, expiration = :_get_)
+      if expiration == :_get_
+        [method,signature,:expires].inject(cache_data,:fetch) rescue nil
+      else
+        [method,signature].inject(cache_data,:fetch)[:expires] = expiration
       end
-      self[method][:next_gc]
+    end
+
+    def method_expiration(method, expiration=:_get_)
+      if expiration == :_get_
+        method_expirations[method]
+      else
+        method_expirations[method] = expiration
+      end
+    end
+
+    def garbage_collect(method:)
+      current_expiration = next_expiration(method)
+      signatures(method).each do |signature|
+        if next_expires > DateTime.now
+          current_expiration = [current_expiration, signature_expiration(method,signature)].min
+          next_expiration(method,current_expiration)
+        else
+          remove_signature(method,signature)
+        end
+      end
+      next_expiration(method)
     end
 
     def cache_empty?(method)
@@ -56,12 +87,22 @@ module CacheMemo
       end
     end
 
-    # sets the value in the hash.  The hash takes the form
-    # method_name => {args_signature => {expires: ..., value: ...}
-    def set(name:, value:, expires:, args_signature: )
-      self[name] = {next_gc: expires, reads:0, writes: 0} if self[name].nil?
-      self[name].merge! args_signature=> {value: value, expires: expires}
-      self[name][args_signature][:value]
+    def get_method_cache(method)
+      @cache_data[method] ||= {reads: 0, writes: 0}
+    end
+
+    def signature_value(method,signature,value=:_get_)
+      if value == :_get_
+        [method,signature,:value].inject(cache_data,:fetch)
+      else
+        [method,signature].inject(cache_data,:fetch)[:value] = value
+      end
+    end
+
+    def set(method:, value:, expires:, args_signature: )
+      cache = get_method_cache(method)
+      cache.merge! args_signature=> {value: value, expires: expires}
+      signature_value(method,args_signature)
     end
 
     # args are passed in from the instance's #cache_for, which we define below.
@@ -83,21 +124,23 @@ module CacheMemo
       end
     end
 
-    def update_method_stats(method:, expiration:)
-      # garbage collects and creates statistics
-      # (no stats yet though)
-      self[method][:next_gc] = expiration if expiration < self[method][:next_gc]
-      # if self[method][:next_gc] < DateTime.now  # do garbage collection now
-      #   self[method][:next_gc] = garbage_collect method: method
-      # else  #otherwise, take the smaller of the existing or new
-      #   self[method][:next_gc] = [self[method][:next_gc], expiration].min
-      # end
+    def update_method_stats(method, data)
+      cache_data[method].merge! data.slice(*RESERVED_KEYS)
+    end
+
+    def method_writes(method)
+      cache_data[method][:writes] || 0
+    end
+
+    def method_reads(method)
+      cache_data[method][:reads] || 0
     end
 
     # The memoized value is considered expired if either it doesn't exist or the expiration
     # date has pased.
-    def expired?(name:, expires:, args_signature: )
-      self.fetch(name,{})[args_signature].nil? || self[name][args_signature][:expires] < DateTime.now
+    def expired?(method:, signature: )
+      dt = DateTime.now
+      (signature_expiration(method, signature) || dt) <= dt
     end
 
     # this is the method called by the module's main method, #cache_for().
@@ -105,15 +148,15 @@ module CacheMemo
     def value(name, expires, args)
       raise CacheData::ArgumentError, "parameter :expires must be a duration (5.seconds, 2.minutes)" unless expires.is_a? ActiveSupport::Duration
       args_signature = signature(args)
-      if expired?(name: name, expires: expires, args_signature: args_signature)
-        set name: name, value: yield(*args), expires: DateTime.now + expires, args_signature: args_signature
-        update_method_stats method: name, expiration: DateTime.now + expires
-        self[name][:writes] += 1
+      if expired?(method: name, signature: args_signature)
+        set method: name, value: yield(*args), expires: DateTime.now + expires, args_signature: args_signature
+        update_method_stats name, expiration: DateTime.now + expires,  writes: method_writes(name) + 1
+        #FIXME: self[name][:writes] += 1
       else
-        self[name][args_signature][:value]
-        self[name][:reads] += 1
+        update_method_stats name, reads: method_reads(name) + 1
+        signature_value(name,args_signature)
       end
-      full_garbage_collect(expiration: DateTime.now + expires)
+      # FIXME: full_garbage_collect(expiration: DateTime.now + expires)
     end
 
   end
