@@ -146,11 +146,16 @@ module CacheMemo
     # The memoized value is considered expired if either it doesn't exist or the expiration
     # date has pased.
     def expired?(method:, signature: )
-      (signature_expiration(method, signature) || DateTeime.now) <= DateTime.now
+      (signature_expiration(method, signature) || DateTime.now) <= DateTime.now
     end
 
-    # this is the method called by the module's main method, #cache_for().
+    # This is the method called by the module's main method, #cache_for().
     # args are simply absorbed into an array in cache_for and passed into this method.
+    #TODO: possible interesing idea:  Based on how long the block takes to execute, the cache duration
+    # could be set dynamically using some formula.  For example, something that takes 1 second to calculate
+    # could be cached for one minute; something that takes 1 minute to calculate could be cached for an hour.
+    # a #calc_duration(execution_time) would output the time to cache  Maybe a sensible default of 60*block exec time
+    # this would only be used if the expires duration was passed in as nil.
     def value(method, expires, args)
       raise CacheData::ArgumentError, "parameter :expires must be a duration (5.seconds, 2.minutes)" unless expires.is_a? ActiveSupport::Duration
       args_signature = signature(args)

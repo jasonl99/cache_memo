@@ -1,7 +1,8 @@
 # cache_memo gem
 
-This gem improves on typical memoziation techiques by allowing the
-memoized value to expire after a user-defined duration.
+** Please note:  this gem is experimental, and is subject to change. ** 
+
+This gem improves on typical memoziation techiques by allowing the memoized value to expire after a user-defined duration.
 
 Typically, memoization looks like this:
 
@@ -11,29 +12,27 @@ def expensive_method
 end
 ```
 
-This is fine most of the time.  However, you occassionaly want to
-refresh the memoized data, and there's no simple way to do this.  The
-cache_memo gem makes it easier:
+This is fine most of the time.  However, you occassionaly want to refresh the memoized data, and there's no simple way to do this.  The cache_memo gem makes it easier.  Suppose we have a class with three methods we'd like to cache:
 
 ```ruby
 class MyClass
   include CacheMemo
 
-  def user_posts(user)
-    # this will create a digest for a cache key
+  def hello_user(user)
     cache_for(10.minutes, user) do
-      get_user_posts
-    end
-
-  def daily_sales(date)
-    #no need to recalulate other day's sales
-    cache_duration = date < Date.today ? 1.day : 5.minutes
-    cache_for(5.minutes, date) do
-      get_daily_sales_from_server
+      say_hello_to(user)
     end
   end
 
-  def gross_domestic_product(country)
+  def daily_sales(date)
+    # we anything other than today for a full day, but today for 5 minutes.
+    cache_duration = date < Date.today ? 1.day : 5.minutes
+    cache_for(cache_duration, date) do
+      look_up_sales_for(date)
+    end
+  end
+
+  def gross_domestic_product(country, year)
     cache_for(1.day, country) do
       calculate_gdp(country)
     end
@@ -43,58 +42,56 @@ end
 
 ```
 
+We'll warm the cache with some values.  This isn't neecessary, we just want to fill the cache and take a look at it.
+
 
 ```ruby
 my_object = MyClass.new
-my_object.daily_sales(Date.today)  # 15000.00
-my_object.daily_sales(Date.yesterday) #12000
-my_object.calculate_gdp('United States')  # 16700000000000
-my_object.calculate_gdp('Germany')        #  3700000000000
+
+# country_list is just an array of United States, Germany, Japan, etc.
+# Find the gdp for each country in our list.
+country_list.each do {|country| my_object.country_gdp(country, 2014)}
+
+# Now calculate daily sales for the last week
+(0..6).to_a.each {|day| my_object.daily_sales day.days.ago}
+
+# Finally say hello to the current user
+my_object.say_hello(current_user)
+
+
 
 ```
-Daily sales will be recalculated every ten minutes.
+The cache creates a signature for each set of parameters.  To keep the cache fast as possible, if the parameters are simple and small, they signature is simply the array of parameters.  However, if the signature is large, we instead calculate a SHA1 digest on the string of the object.  Slower, but much less memory use.  
 
-The parameter signatures will be an array of passed parameters, unless
-the string representation of that array is more than 100 characters
-(chosen arbitrarily), in which case the signature will be a SHA1 digest.
-
-With gross_domestic_product, each country have its own
-cached value.  Looking at the cache_data, you can see the parameter
-signatures as text, whereas the user_posts signature is a SHA1 hash.
+The signature now becomes the key under the method that is being cached.  The internal structure is much easier to understand when you see it printed out.  Given the code that we ran above, here's how the cache's internal data looks:
 
 
 ```ruby
 my_object.cache_data
 
-{
-  :daily_sales=>{
-    [Thu 22 Jan 2015] => {
-      :value=>15000,
-      :expires=>Wed, 22 Jan 2015 12:45:01 -0500  # expires in five minutes (called on the same day)
-      },
-    [Wed 21 Jan 2015] => {
-      :value=>12000,
-      :expires=>Wed, 23 Jan 2015 12:45:01 -0500  # expires in a day
-      },
-    },
- :gross_domestic_product=>
-    "United States" => {
-      :value=>16700000000000
-      :expires=>Wed, 21 Jan 2015 12:55:05 -0500
-      },
-    "Germany"=> {
-      :value=>3700000000000
-      :expires=>Wed, 21 Jan 2015 12:56:15 -0500
-      },
- :user_posts=>
-    "c3d7fc8a0650d009342d3083c1e9521c11286890" => {
-      :value=>[652,5123,661,2315]
-      :expires=>Wed, 21 Jan 2015 12:55:05 -0500
-      },
-    "2e3afe9391f303ba72e522ff1363c831b6ac252f"=> {
-      :value=>[15,25,13]
-      :expires=>Wed, 21 Jan 2015 12:56:15 -0500
-      }
-}
-
+{:country_gdp=>
+    {:writes=>11,
+     ["United States", 2014]=>{:value=>5073172496, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Germany", 2014]=>{:value=>5078641691, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Japan", 2014]=>{:value=>5054080185, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["China", 2014]=>{:value=>5087291886, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["United Kindgom", 2014]=>{:value=>5021651076, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Brazil", 2014]=>{:value=>5001475008, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Italy", 2014]=>{:value=>5065918210, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Russia", 2014]=>{:value=>5042426304, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Canada", 2014]=>{:value=>5004410384, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["India", 2014]=>{:value=>5009832923, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     ["Australia'", 2014]=>{:value=>5098798449, :expires=>Sun, 25 Jan 2015 19:49:38 -0500},
+     :reads=>3496},
+   :daily_sales=>
+    {:writes=>7,
+     [Sun, 25 Jan 2015 00:49:56 UTC +00:00]=>{:value=>421, :expires=>Sat, 24 Jan 2015 19:54:56 -0500},
+     [Sat, 24 Jan 2015 00:49:56 UTC +00:00]=>{:value=>564, :expires=>Sat, 24 Jan 2015 19:54:56 -0500},
+     [Fri, 23 Jan 2015 00:49:56 UTC +00:00]=>{:value=>559, :expires=>Sun, 25 Jan 2015 19:49:56 -0500},
+     [Thu, 22 Jan 2015 00:49:56 UTC +00:00]=>{:value=>427, :expires=>Sun, 25 Jan 2015 19:49:56 -0500},
+     [Wed, 21 Jan 2015 00:49:56 UTC +00:00]=>{:value=>280, :expires=>Sun, 25 Jan 2015 19:49:56 -0500},
+     [Tue, 20 Jan 2015 00:49:56 UTC +00:00]=>{:value=>981, :expires=>Sun, 25 Jan 2015 19:49:56 -0500},
+     [Mon, 19 Jan 2015 00:49:56 UTC +00:00]=>{:value=>531, :expires=>Sun, 25 Jan 2015 19:49:56 -0500}},
+   :hello_user=>{:writes=>1, "e5645a7eaaacba8aaac7f40cf74afbc982bbbb66"=>{:value=>"Hello, Jason Landry", :expires=>Sat, 24 Jan 2015 20:00:09 -0500}}}
 ```
+
